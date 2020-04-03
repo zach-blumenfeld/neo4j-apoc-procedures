@@ -23,6 +23,7 @@ Cypher brings along some basic functions for math, text, collections and maps.
 * <<static-values>>
 * <<utility-functions>>
 * <<bitwise-operations>>
+* <<compress-operations>>
 * <<atomic-updates>>
 * <<log>>
 
@@ -223,6 +224,16 @@ examples
 | a << b | LEFT SHIFT | apoc.bitwise.op(60,"<<",2) | 240
 | a >> b | RIGHT SHIFT | apoc.bitwise.op(60,">>",2) | 15
 | a >>> b | UNSIGNED RIGHT SHIFT | apoc.bitwise.op(60,">>>",2) | 15
+|===
+
+[[compress-operations]]
+=== Compress operations
+
+Functions to compress/decompress byte arrays of gzip data.
+
+|===
+| apoc.gzip.unzip( bytes ) as text
+| apoc.gzip.zip( text ) as bytes
 |===
 
 [[atomic-updates]]
