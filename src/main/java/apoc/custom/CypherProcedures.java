@@ -243,13 +243,13 @@ public class CypherProcedures {
             if (procedureMetadata.containsKey("signature")) {
                 Signatures sigs = new Signatures("custom");
                 ProcedureSignature procedureSignature = sigs.asProcedureSignature((String) procedureMetadata.get("signature"),
-                        (String) procedureMetadata.get("description"),
+                        getDescription(procedureMetadata),
                         Mode.valueOf((String) procedureMetadata.get("mode")));
                 deleted = removeProcedure(procedureSignature);
             } else {
                 deleted = removeProcedure(procedureName, (List<List<String>>) procedureMetadata.get("inputs"),
                         (List<List<String>>) procedureMetadata.get("outputs"),
-                        (String) procedureMetadata.get("description"),
+                        getDescription(procedureMetadata),
                         (String) procedureMetadata.get("mode"));
             }
             return deleted;
@@ -330,12 +330,12 @@ public class CypherProcedures {
             if (functionMetadata.containsKey("signature")) {
                 Signatures sigs = new Signatures("custom");
                 UserFunctionSignature userFunctionSignature = sigs.asFunctionSignature((String) functionMetadata.get("signature"),
-                        (String) functionMetadata.get("description"));
+                        getDescription(functionMetadata));
                 deleted = removeFunction(userFunctionSignature);
             } else {
                 deleted = removeFunction(functionName, (String) functionMetadata.get("output"),
                         (List<List<String>>) functionMetadata.get("inputs"),
-                        (String) functionMetadata.get("description"));
+                        getDescription(functionMetadata));
             }
             return deleted;
         }
@@ -469,6 +469,11 @@ public class CypherProcedures {
         }
     }
 
+    private static String getDescription(Map<String, Object> procedureMetadata) {
+        Object desc = procedureMetadata.get("description");
+        return desc instanceof String ? (String) desc : null;
+    }
+
     public static Mode mode(String s) {
         return s == null ? Mode.READ : Mode.valueOf(s.toUpperCase());
     }
@@ -535,20 +540,20 @@ public class CypherProcedures {
             Signatures sigs = new Signatures("custom");
             stored.get(FUNCTIONS).forEach((name, data) -> {
                 if (data.containsKey("signature")) {
-                    UserFunctionSignature userFunctionSignature = sigs.asFunctionSignature((String) data.get("signature"), (String) data.get("description"));
+                    UserFunctionSignature userFunctionSignature = sigs.asFunctionSignature((String) data.get("signature"), getDescription(data));
                     registry.registerFunction(userFunctionSignature, (String) data.get("statement"), (Boolean) data.get("forceSingle"));
                 } else {
                     registry.registerFunction(name, (String) data.get("statement"), (String) data.get("output"),
-                            (List<List<String>>) data.get("inputs"), (Boolean) data.get("forceSingle"), (String) data.get("description"));
+                            (List<List<String>>) data.get("inputs"), (Boolean) data.get("forceSingle"), getDescription(data));
                 }
             });
             stored.get(PROCEDURES).forEach((name, data) -> {
                 if (data.containsKey("signature")) {
-                    ProcedureSignature procedureSignature = sigs.asProcedureSignature((String) data.get("signature"), (String) data.get("description"), Mode.valueOf((String) data.get("mode")));
+                    ProcedureSignature procedureSignature = sigs.asProcedureSignature((String) data.get("signature"), getDescription(data), Mode.valueOf((String) data.get("mode")));
                     registry.registerProcedure(procedureSignature, (String) data.get("statement"));
                 } else {
                     registry.registerProcedure(name, (String) data.get("statement"), (String) data.get("mode"),
-                            (List<List<String>>) data.get("outputs"), (List<List<String>>) data.get("inputs"), (String) data.get("description"));
+                            (List<List<String>>) data.get("outputs"), (List<List<String>>) data.get("inputs"), getDescription(data));
                 }
             });
             stored.getOrDefault(REMOVED, emptyMap())
@@ -580,7 +585,7 @@ public class CypherProcedures {
         }
 
         public static Map<String, Object> storeProcedure(GraphDatabaseAPI api, ProcedureSignature signature, String statement) {
-            Map<String, Object> data = map("statement", statement, "mode", signature.mode().toString(), "signature", signature.toString(), "description", signature.description());
+            Map<String, Object> data = map("statement", statement, "mode", signature.mode().toString(), "signature", signature.toString(), "description", signature.description().orElse(null));
             return updateCustomData(getProperties(api), signature.name().toString(), PROCEDURES, data);
         }
         public static Map<String, Object> storeFunction(GraphDatabaseAPI api, String name, String statement, String output, List<List<String>> inputs, boolean forceSingle, String description) {
@@ -589,7 +594,7 @@ public class CypherProcedures {
         }
 
         public static Map<String, Object> storeFunction(GraphDatabaseAPI api, UserFunctionSignature signature, String statement, boolean forceSingle) {
-            Map<String, Object> data = map("statement", statement, "forceSingle", forceSingle, "signature", signature.toString(), "description", signature.description());
+            Map<String, Object> data = map("statement", statement, "forceSingle", forceSingle, "signature", signature.toString(), "description", signature.description().orElse(null));
             return updateCustomData(getProperties(api), signature.name().toString(), FUNCTIONS, data);
         }
 
