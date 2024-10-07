@@ -18,7 +18,6 @@
  */
 package apoc.refactor;
 
-import static apoc.ml.resolve.util.RefactorUtil.*;
 import static dev.langchain4j.model.openai.OpenAiChatModelName.GPT_4_O_MINI;
 
 import apoc.Pools;
@@ -26,8 +25,6 @@ import apoc.ml.resolve.ConnectedComponents;
 import apoc.ml.resolve.NodePair;
 import apoc.ml.resolve.AINodeResolver;
 import apoc.ml.resolve.EntityLinkEnum;
-import apoc.ml.resolve.util.PropertiesManager;
-import apoc.ml.resolve.util.RefactorConfig;
 import apoc.util.Util;
 
 import java.util.*;
@@ -59,36 +56,26 @@ public class GraphResolution {
     public Pools pools;
 
 
-    public record ResolvedNodesResult(@Description("The merged nodes.") List<Node> nodes) {}
+    public record ResolvedNodesResult(@Description("The resolved node components.") List<List<Node>> nodes) {}
 
     /**
      * Resolve nodes in a list based on node properties
      */
     @Procedure(name = "apoc.ml.resolve.nodes", mode = Mode.WRITE, eager = true)
-    @Description("Resolve given `LIST<NODE>` based on node properties.")
+    @Description("Resolve given `LIST<NODE>` into components based on node properties.")
     public Stream<ResolvedNodesResult> resolveNodes(
-            @Name(value = "nodes", description = "The nodes to be resolved.") List<Node> nodes,
+            @Name(value = "components", description = "The componets containing resolved nodes.") List<Node> nodes,
             @Name(
-                    value = "mergeConfig",
+                    value = "config",
                     defaultValue = "{}",
                     description =
                             """
             {
                 resolutionProperties :: LIST<STRING>,
                 openAIKey :: STRING,
-                mergeRels :: BOOLEAN,
                 batchSize :: LONG,
-                selfRef :: BOOLEAN,
-                produceSelfRef = true :: BOOLEAN,
-                preserveExistingSelfRels = true :: BOOLEAN,
-                countMerge = true :: BOOLEAN,
-                collapsedLabel :: BOOLEAN,
-                singleElementAsArray = false :: BOOLEAN,
-                avoidDuplicates = false :: BOOLEAN,
-                relationshipSelectionStrategy = "incoming" :: ["incoming", "outgoing", "merge"]
-                properties :: ["overwrite", ""discard", "combine"]
             }
-            """) Map<String, Object> mergeConfig) throws JsonProcessingException {
+            """) Map<String, Object> config) throws JsonProcessingException {
         if (nodes == null || nodes.isEmpty()) return Stream.empty();
 
         System.out.println("====== APOC =======");
@@ -97,8 +84,6 @@ public class GraphResolution {
         int batchSize = ((Long) mergeConfig.get("batchSize")).intValue();
         List<String> resolutionProperties = (List<String>) mergeConfig.get("resolutionProperties");
         String openAIKey = (String) mergeConfig.get("openAIKey");
-
-        RefactorConfig conf = new RefactorConfig(mergeConfig);
 
         // create cartisian product for comparing (user should use blocking strategy in Cypher for large comparisons)
         Set<NodePair> nodePairs = makeNodePairs(nodes);
@@ -119,111 +104,12 @@ public class GraphResolution {
 
         //Merge Nodes in each component
         List<Node> mergedNodes = new ArrayList<>();
+        List<List<Node>> components = new ArrayList<>();
         for (Set<Node> resolvedNodes : entityComponents.getComponents().values()){
-            mergedNodes.add(mergeNodes(new ArrayList<Node>(resolvedNodes), mergeConfig));
+            components.add(resolvedNodes.stream().toList());
         }
 
-        return Stream.of(new ResolvedNodesResult(mergedNodes));
-    }
-
-
-    /**
-     * Merges the nodes onto the first node.
-     * The other nodes are deleted and their relationships moved onto that first node.
-     */
-    public Node mergeNodes(
-            @Name(value = "nodes", description = "The nodes to be merged onto the first node.") List<Node> nodes,
-            @Name(
-                    value = "config",
-                    defaultValue = "{}",
-                    description =
-                            """
-            {
-                mergeRels :: BOOLEAN,
-                selfRef :: BOOLEAN,
-                produceSelfRef = true :: BOOLEAN,
-                preserveExistingSelfRels = true :: BOOLEAN,
-                countMerge = true :: BOOLEAN,
-                collapsedLabel :: BOOLEAN,
-                singleElementAsArray = false :: BOOLEAN,
-                avoidDuplicates = false :: BOOLEAN,
-                relationshipSelectionStrategy = "incoming" :: ["incoming", "outgoing", "merge"]
-                properties :: ["overwrite", ""discard", "combine"]
-            }
-            """)
-            Map<String, Object> config) {
-        if (nodes == null || nodes.isEmpty()) return null;
-        RefactorConfig conf = new RefactorConfig(config);
-        Set<Node> nodesSet = new LinkedHashSet<>(nodes);
-        // grab write locks upfront consistently ordered
-        nodesSet.stream().sorted(Comparator.comparing(Node::getElementId)).forEach(tx::acquireWriteLock);
-
-        final Node first = nodes.get(0);
-        final List<String> existingSelfRelIds = conf.isPreservingExistingSelfRels()
-                ? StreamSupport.stream(first.getRelationships().spliterator(), false)
-                .filter(Util::isSelfRel)
-                .map(Entity::getElementId)
-                .collect(Collectors.toList())
-                : Collections.emptyList();
-
-        nodesSet.stream().skip(1).forEach(node -> mergeNodes(node, first, conf, existingSelfRelIds));
-        return first;
-    }
-
-
-
-    private void mergeNodes(Node source, Node target, RefactorConfig conf, List<String> excludeRelIds) {
-        try {
-            Map<String, Object> properties = source.getAllProperties();
-            final Iterable<Label> labels = source.getLabels();
-
-            copyRelationships(source, target, true, conf.isCreatingNewSelfRel());
-            if (conf.getMergeRelsAllowed()) {
-                mergeRelationshipsWithSameTypeAndDirection(target, conf, Direction.OUTGOING, excludeRelIds);
-                mergeRelationshipsWithSameTypeAndDirection(target, conf, Direction.INCOMING, excludeRelIds);
-            }
-            source.delete();
-            labels.forEach(target::addLabel);
-            PropertiesManager.mergeProperties(properties, target, conf);
-        } catch (NotFoundException e) {
-            log.warn("skipping a node for merging: " + e.getCause().getMessage());
-        }
-    }
-
-    private void copyRelationships(Node source, Node target, boolean delete, boolean createNewSelfRel) {
-        for (Relationship rel : source.getRelationships()) {
-            copyRelationship(rel, source, target, createNewSelfRel);
-            if (delete) rel.delete();
-        }
-    }
-
-    private Node copyLabels(Node source, Node target) {
-        for (Label label : source.getLabels()) {
-            if (!target.hasLabel(label)) {
-                target.addLabel(label);
-            }
-        }
-        return target;
-    }
-
-    private void copyRelationship(Relationship rel, Node source, Node target, boolean createNewSelfRelf) {
-        Node startNode = rel.getStartNode();
-        Node endNode = rel.getEndNode();
-
-        if (startNode.getElementId().equals(endNode.getElementId()) && !createNewSelfRelf) {
-            return;
-        }
-
-        if (startNode.getElementId().equals(source.getElementId())) {
-            startNode = target;
-        }
-
-        if (endNode.getElementId().equals(source.getElementId())) {
-            endNode = target;
-        }
-
-        Relationship newrel = startNode.createRelationshipTo(endNode, rel.getType());
-        copyProperties(rel, newrel);
+        return Stream.of(new ResolvedNodesResult(components));
     }
 
     private Set<NodePair> makeNodePairs(Collection<Node> nodes) {
