@@ -68,16 +68,16 @@ public class GraphResolution {
     @Description("Resolve given `LIST<NODE>` based on node properties.")
     public Stream<ResolvedNodesResult> resolveNodes(
             @Name(value = "nodes", description = "The nodes to be resolved.") List<Node> nodes,
-            @Name(value = "resolutionProperties", description = "The properties to use for entity linking") List<String> resolutionProperties,
-            @Name(value = "openAIKey", description = "OpenAI API Key") String openAIKey,
-            @Name(value = "batchSize", defaultValue = "10", description = "The batch size to use for entity linking (number of node pairs to send to LLM for assemsment at once)") Long batchSize,
             @Name(
                     value = "mergeConfig",
                     defaultValue = "{}",
                     description =
                             """
             {
+                resolutionProperties :: LIST<STRING>,
+                openAIKey :: STRING,
                 mergeRels :: BOOLEAN,
+                batchSize :: LONG,
                 selfRef :: BOOLEAN,
                 produceSelfRef = true :: BOOLEAN,
                 preserveExistingSelfRels = true :: BOOLEAN,
@@ -94,6 +94,10 @@ public class GraphResolution {
         System.out.println("====== APOC =======");
         System.out.println("initial nodes: " + nodes.size());
         System.out.println("====== APOC =======");
+        int batchSize = ((Long) mergeConfig.get("batchSize")).intValue();
+        List<String> resolutionProperties = (List<String>) mergeConfig.get("resolutionProperties");
+        String openAIKey = (String) mergeConfig.get("openAIKey");
+
         RefactorConfig conf = new RefactorConfig(mergeConfig);
 
         // create cartisian product for comparing (user should use blocking strategy in Cypher for large comparisons)
@@ -109,7 +113,7 @@ public class GraphResolution {
 
         // Perform entity linking in batches and resolve into weakly connected components (WCC)
         ConnectedComponents entityComponents = new ConnectedComponents();
-        for (List<NodePair> partition : Lists.partition(new ArrayList<>(nodePairs),  batchSize.intValue())) {
+        for (List<NodePair> partition : Lists.partition(new ArrayList<>(nodePairs), batchSize)) {
             entityComponents.addNodePairs(findEntityLinks(partition, resolutionProperties, aiNodeResolver)); //batched entity linking
         }
 

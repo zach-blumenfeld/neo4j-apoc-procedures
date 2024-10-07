@@ -10,7 +10,7 @@ public interface AINodeResolver {
     @UserMessage("""
 You are responsible for entity resolution, identifying whether two records refer to the same underlying entity, even if there are minor variations between them.
 For each entity pair in the list provided below, analyze and determine whether the pair refers to the same entity or different entities. 
-Consider variations in names, idfentifiers, dewcriotions, text, abbreviations, or misspellings, as real-world records often contain minor differences for the same entity.
+Consider variations in names, idfentifiers, descriotions, text, abbreviations, or misspellings, as real-world records often contain minor differences for the same entity.
 
 # Instructions:
 - Return SAME if the pair refers to the same entity, despite minor differences.
