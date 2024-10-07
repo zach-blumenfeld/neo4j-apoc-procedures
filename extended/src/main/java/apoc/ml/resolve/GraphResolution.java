@@ -18,7 +18,7 @@
  */
 package apoc.refactor;
 
-import static dev.langchain4j.model.openai.OpenAiChatModelName.GPT_4_O_MINI;
+import static dev.langchain4j.model.openai.OpenAiChatModelName.GPT_4_O;
 
 import apoc.Pools;
 import apoc.ml.resolve.ConnectedComponents;
@@ -75,23 +75,24 @@ public class GraphResolution {
                 openAIKey :: STRING,
                 batchSize :: LONG,
             }
-            """) Map<String, Object> config) throws JsonProcessingException {
+            """) Map<String, Object> config) throws Exception {
         if (nodes == null || nodes.isEmpty()) return Stream.empty();
 
         System.out.println("====== APOC =======");
         System.out.println("initial nodes: " + nodes.size());
-        System.out.println("====== APOC =======");
-        int batchSize = ((Long) mergeConfig.get("batchSize")).intValue();
-        List<String> resolutionProperties = (List<String>) mergeConfig.get("resolutionProperties");
-        String openAIKey = (String) mergeConfig.get("openAIKey");
+        int batchSize = ((Long) config.get("batchSize")).intValue();
+        List<String> resolutionProperties = (List<String>) config.get("resolutionProperties");
+        String openAIKey = (String) config.get("openAIKey");
 
         // create cartisian product for comparing (user should use blocking strategy in Cypher for large comparisons)
         Set<NodePair> nodePairs = makeNodePairs(nodes);
+        System.out.println("====== APOC =======");
+        System.out.println("number of node pairs: " + nodePairs.size());
 
         //create model and AI assistant for entity linking
         ChatLanguageModel model = OpenAiChatModel.builder()
                 .apiKey(openAIKey)
-                .modelName(GPT_4_O_MINI)
+                .modelName(GPT_4_O)
                 .temperature(0.0)
                 .build();
         AINodeResolver aiNodeResolver = AiServices.create(AINodeResolver.class, model);;
@@ -117,9 +118,6 @@ public class GraphResolution {
         for (Node node : nodes) {
             for(Node innerNode : nodes) {
                 if(node.getElementId().compareTo(innerNode.getElementId()) < 0){
-                    System.out.println("====== APOC =======");
-                    System.out.println("creating node pair: " + node.getElementId() + " __ " + innerNode.getElementId());
-                    System.out.println("====== APOC =======");
                     pairs.add(new NodePair(node, innerNode));
                 }
             }
@@ -127,10 +125,11 @@ public class GraphResolution {
         return pairs;
     }
 
-    private Set<NodePair> findEntityLinks(List<NodePair> nodePairs, List<String> resolutionProperties, AINodeResolver aiNodeResolver) throws JsonProcessingException {
+    private Set<NodePair> findEntityLinks(List<NodePair> nodePairs, List<String> resolutionProperties, AINodeResolver aiNodeResolver) throws Exception {
         //TODO: Make a Real LLM Call Here
         Set<NodePair> entityLinkPairs = new HashSet<>();
-
+        System.out.println("====== APOC =======");
+        System.out.println("Context for AI:\n" + entityLinkPairs.size());
         String nodePairsInput = "";
         for (NodePair nodePair : nodePairs) {
             String nodePairString = nodePair.getComparisonString(resolutionProperties);
@@ -138,20 +137,19 @@ public class GraphResolution {
         }
         System.out.println("====== APOC =======");
         System.out.println("Context for AI:\n" + nodePairsInput);
-        System.out.println("====== APOC =======");
         List<EntityLinkEnum> linkEnums = aiNodeResolver.resolve(nodePairsInput);
         System.out.println("====== APOC =======");
         System.out.println("Link Enums:\n" + linkEnums);
-        System.out.println("====== APOC =======");
-        int entitiesCompared = Math.min(linkEnums.size(), nodePairs.size());
-        for(int i = 0; i < entitiesCompared; i++){
+        if(linkEnums.size() != nodePairs.size()){
+            return entityLinkPairs; //empty set
+        }
+        for(int i = 0; i < nodePairs.size(); i++){
             if (linkEnums.get(i) == EntityLinkEnum.SAME){
                 entityLinkPairs.add(nodePairs.get(i));
             }
         }
         System.out.println("====== APOC =======");
         System.out.println("Entity Link Pairs:\n" + entityLinkPairs);
-        System.out.println("====== APOC =======");
         return entityLinkPairs;
     }
 }
