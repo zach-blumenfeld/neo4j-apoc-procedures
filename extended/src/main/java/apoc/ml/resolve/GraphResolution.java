@@ -19,10 +19,13 @@
 package apoc.refactor;
 
 import static apoc.ml.resolve.util.RefactorUtil.*;
+import static dev.langchain4j.model.openai.OpenAiChatModelName.GPT_4_O_MINI;
 
 import apoc.Pools;
 import apoc.ml.resolve.ConnectedComponents;
 import apoc.ml.resolve.NodePair;
+import apoc.ml.resolve.AINodeResolver;
+import apoc.ml.resolve.EntityLinkEnum;
 import apoc.ml.resolve.util.PropertiesManager;
 import apoc.ml.resolve.util.RefactorConfig;
 import apoc.util.Util;
@@ -33,7 +36,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.Lists;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.service.AiServices;
 import org.neo4j.graphdb.*;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.*;
@@ -62,6 +69,7 @@ public class GraphResolution {
     public Stream<ResolvedNodesResult> resolveNodes(
             @Name(value = "nodes", description = "The nodes to be resolved.") List<Node> nodes,
             @Name(value = "resolutionProperties", description = "The properties to use for entity linking") List<String> resolutionProperties,
+            @Name(value = "openAIKey", description = "OpenAI API Key") String openAIKey,
             @Name(value = "batchSize", defaultValue = "10", description = "The batch size to use for entity linking (number of node pairs to send to LLM for assemsment at once)") Long batchSize,
             @Name(
                     value = "mergeConfig",
@@ -80,7 +88,7 @@ public class GraphResolution {
                 relationshipSelectionStrategy = "incoming" :: ["incoming", "outgoing", "merge"]
                 properties :: ["overwrite", ""discard", "combine"]
             }
-            """) Map<String, Object> mergeConfig) {
+            """) Map<String, Object> mergeConfig) throws JsonProcessingException {
         if (nodes == null || nodes.isEmpty()) return Stream.empty();
 
         System.out.println("====== APOC =======");
@@ -91,10 +99,18 @@ public class GraphResolution {
         // create cartisian product for comparing (user should use blocking strategy in Cypher for large comparisons)
         Set<NodePair> nodePairs = makeNodePairs(nodes);
 
+        //create model and AI assistant for entity linking
+        ChatLanguageModel model = OpenAiChatModel.builder()
+                .apiKey(openAIKey)
+                .modelName(GPT_4_O_MINI)
+                .temperature(0.0)
+                .build();
+        AINodeResolver aiNodeResolver = AiServices.create(AINodeResolver.class, model);;
+
         // Perform entity linking in batches and resolve into weakly connected components (WCC)
         ConnectedComponents entityComponents = new ConnectedComponents();
         for (List<NodePair> partition : Lists.partition(new ArrayList<>(nodePairs),  batchSize.intValue())) {
-            entityComponents.addNodePairs(findEntityLinks(partition, resolutionProperties)); //batched entity linking
+            entityComponents.addNodePairs(findEntityLinks(partition, resolutionProperties, aiNodeResolver)); //batched entity linking
         }
 
         //Merge Nodes in each component
@@ -221,14 +237,31 @@ public class GraphResolution {
         return pairs;
     }
 
-    private Set<NodePair> findEntityLinks(Collection<NodePair> nodePairs, List<String> resolutionProperties) {
+    private Set<NodePair> findEntityLinks(List<NodePair> nodePairs, List<String> resolutionProperties, AINodeResolver aiNodeResolver) throws JsonProcessingException {
         //TODO: Make a Real LLM Call Here
         Set<NodePair> entityLinkPairs = new HashSet<>();
+
+        String nodePairsInput = "";
         for (NodePair nodePair : nodePairs) {
-            if (Math.random() < 1.0){ //always match
-                entityLinkPairs.add(nodePair);
+            String nodePairString = nodePair.getComparisonString(resolutionProperties);
+            nodePairsInput = nodePairsInput + nodePairString + "\n";
+        }
+        System.out.println("====== APOC =======");
+        System.out.println("Context for AI:\n" + nodePairsInput);
+        System.out.println("====== APOC =======");
+        List<EntityLinkEnum> linkEnums = aiNodeResolver.resolve(nodePairsInput);
+        System.out.println("====== APOC =======");
+        System.out.println("Link Enums:\n" + linkEnums);
+        System.out.println("====== APOC =======");
+        int entitiesCompared = Math.min(linkEnums.size(), nodePairs.size());
+        for(int i = 0; i < entitiesCompared; i++){
+            if (linkEnums.get(i) == EntityLinkEnum.SAME){
+                entityLinkPairs.add(nodePairs.get(i));
             }
         }
+        System.out.println("====== APOC =======");
+        System.out.println("Entity Link Pairs:\n" + entityLinkPairs);
+        System.out.println("====== APOC =======");
         return entityLinkPairs;
     }
 }

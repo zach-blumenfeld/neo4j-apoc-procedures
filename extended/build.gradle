@@ -5,7 +5,7 @@ plugins {
     id 'com.github.johnrengelman.shadow'
     id 'maven-publish'
     id 'antlr'
-    id "org.jetbrains.kotlin.jvm" version "1.6.0"
+    id "org.jetbrains.kotlin.jvm" version "1.9.0"
     id "com.diffplug.spotless" version "6.7.2"
 }
 
@@ -85,6 +85,10 @@ dependencies {
     }
     implementation group: 'us.fatehi', name: 'schemacrawler', version: '16.20.8'
     implementation group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.17.0', withoutJacksons
+
+    //AI Entity Resolution
+    implementation group: 'dev.langchain4j', name: 'langchain4j-open-ai', version: '0.35.0'
+    implementation group: 'dev.langchain4j', name: 'langchain4j', version: '0.35.0'
 
     // These will be dependencies not packaged with the .jar
     // They need to be provided either through the database or in an extra .jar

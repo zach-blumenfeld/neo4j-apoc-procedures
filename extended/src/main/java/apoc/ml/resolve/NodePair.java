@@ -1,6 +1,12 @@
 package apoc.ml.resolve;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.neo4j.graphdb.Node;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class NodePair {
     private final Node first;
@@ -22,6 +28,14 @@ public class NodePair {
 
     public Node getSecond() {
         return second;
+    }
+
+    public String getComparisonString(List<String> compareProperties) throws JsonProcessingException {
+        Map<String, Object> entityPairMap = new HashMap<>();
+        String[] comparePropArray = compareProperties.stream().toArray(String[]::new);
+        entityPairMap.put("entity1", first.getProperties(comparePropArray));
+        entityPairMap.put("entity2", second.getProperties(comparePropArray));
+        return new ObjectMapper().writeValueAsString(entityPairMap);
     }
 
     @Override

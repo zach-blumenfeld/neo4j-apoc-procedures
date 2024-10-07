@@ -32,13 +32,11 @@ public class ConnectedComponents {
     }
 
     public void addNodePairs(Collection<NodePair> nodePairs) {
-        System.out.println("====== APOC =======");
+        System.out.println("====== APOC WCC=======");
         System.out.println("adding node pairs: " + nodePairs.size());
-        System.out.println("====== APOC =======");
         for (NodePair nodePair : nodePairs) {
-            System.out.println("====== APOC =======");
+            System.out.println("====== APOC WCC=======");
             System.out.println("adding node pair: " + nodePair.getFirst().getElementId() + "  __  " + nodePair.getSecond().getElementId());
-            System.out.println("====== APOC =======");
             addNodePair(nodePair);
         }
     }
